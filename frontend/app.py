@@ -1,0 +1,294 @@
+import os
+import uuid
+import requests
+import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_backend_port = os.getenv("BACKEND_PORT", "8000")
+BACKEND_URL = os.getenv("BACKEND_URL", f"http://localhost:{_backend_port}").strip().rstrip("/")
+FRONTEND_TITLE = os.getenv("FRONTEND_TITLE", "MANGOS Tech Manual Agent")
+FEEDBACK_URL = os.getenv("FEEDBACK_URL", "").strip()
+APP_VERSION = "frontend-json-v4"
+
+st.set_page_config(
+    page_title=FRONTEND_TITLE,
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown("""
+<style>
+    :root {
+        --navy: #1e3a5f;
+        --navy-light: #2d5a87;
+        --orange: #f26522;
+        --bg: #f7f9fc;
+        --card: #ffffff;
+        --border: #e2e8f0;
+    }
+
+    .stApp { background: var(--bg) !important; }
+
+    .main .block-container {
+        padding: 1.5rem 2rem 2rem !important;
+        max-width: 1200px;
+    }
+
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar-user"]) {
+        background: linear-gradient(135deg, #eef4fb, #e3ecf7);
+        border: 1px solid #d0dff0;
+        border-left: 4px solid #4a90d9;
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin: 0.5rem 0;
+    }
+
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar-assistant"]) {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-left: 4px solid var(--navy);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin: 0.5rem 0;
+    }
+
+    [data-testid="stChatInput"] {
+        border: 2px solid var(--border) !important;
+        border-radius: 12px !important;
+    }
+
+    [data-testid="stChatInput"]:focus-within {
+        border-color: var(--navy) !important;
+    }
+
+    .stButton > button {
+        background: linear-gradient(135deg, var(--navy), var(--navy-light));
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    [data-testid="stSidebar"] { background: var(--card) !important; }
+
+    .stSpinner > div { border-top-color: var(--orange) !important; }
+
+    hr { border: none; height: 1px; background: #edf2f7; margin: 1rem 0; }
+</style>
+""", unsafe_allow_html=True)
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+
+def render_citations(citations: list) -> None:
+    with st.expander(f"📚 Sources ({len(citations)})", expanded=False):
+        for i, c in enumerate(citations, 1):
+            source = c.get("source", "Unknown")
+            title = c.get("title", "")
+            section = c.get("section", "")
+            page = c.get("page", "")
+            url = c.get("url", "")
+            chunk_id = c.get("chunk_id", "")
+
+            display_name = title if title else source
+            label = f"**{i}.** {display_name}"
+
+            if title and title != source:
+                label += f"  _(file: {source})_"
+            if section:
+                label += f"\n\n> {section}"
+            if page not in ("", None):
+                label += f"\n\nPage: {page}"
+            if chunk_id:
+                label += f"\n\nChunk: `{chunk_id}`"
+
+            if url:
+                st.markdown(f"{label}\n\n[View source]({url})")
+            else:
+                st.markdown(label)
+
+
+def render_history() -> None:
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            if msg["role"] == "assistant" and msg.get("citations"):
+                render_citations(msg["citations"])
+
+
+def render_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align:center; padding: 0.75rem 0 0.5rem;">
+            <svg viewBox="0 0 160 55" xmlns="http://www.w3.org/2000/svg"
+                 style="height:50px; width:auto;">
+                <circle cx="28" cy="28" r="24" fill="#f26522"/>
+                <g fill="white">
+                    <polygon points="28,8 29.5,17 26.5,17"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(30,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(60,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(90,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(120,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(150,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(180,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(210,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(240,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(270,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(300,28,28)"/>
+                    <polygon points="28,8 29.5,17 26.5,17" transform="rotate(330,28,28)"/>
+                </g>
+                <circle cx="28" cy="28" r="6" fill="white"/>
+                <text x="62" y="36" font-family="Arial,sans-serif" font-size="26"
+                      font-weight="bold" fill="#1e3a5f">MANGOS</text>
+            </svg>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("**Tech Manual Agent**")
+        st.caption("Powered by Azure AI · commercial Azure")
+        st.caption(f"App version: {APP_VERSION}")
+        st.markdown("---")
+
+        st.markdown("**Backend Status**")
+        try:
+            r = requests.get(f"{BACKEND_URL}/health", timeout=4)
+            if r.status_code == 200:
+                st.success("Connected ✓")
+            else:
+                st.warning(f"HTTP {r.status_code}")
+        except Exception:
+            st.error("Unreachable")
+
+        st.markdown("---")
+
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            st.session_state.session_id = str(uuid.uuid4())
+            st.rerun()
+
+        if FEEDBACK_URL:
+            st.markdown("### Feedback")
+            st.markdown(
+                f'<a href="{FEEDBACK_URL}" target="_blank">'
+                f'<button style="width:100%;padding:10px;border:none;border-radius:8px;'
+                f'background:#f26522;color:white;font-weight:600;cursor:pointer;">'
+                f'📝 Share Feedback</button></a>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+        st.caption(f"Session `{st.session_state.session_id[:8]}...`")
+
+
+def render_header() -> None:
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+                border-radius: 16px; padding: 1.25rem 2rem; margin-bottom: 1.25rem;
+                border-bottom: 4px solid #f26522;
+                box-shadow: 0 6px 20px rgba(30,58,95,0.12);">
+        <div style="font-size:1.3rem; font-weight:700; color:white; margin-bottom:4px;">
+            ⚡ Tech Manual Agent
+        </div>
+        <div style="font-size:0.88rem; color:rgba(255,255,255,0.85);">
+            Ask questions against MANGOS technical documentation.
+            Answers are grounded in retrieved manual content with source citations.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def call_backend_json(prompt: str, session_id: str) -> tuple[str, list]:
+    resp = requests.post(
+        f"{BACKEND_URL}/chat",
+        json={
+            "question": prompt,
+            "session_id": session_id,
+        },
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        timeout=120,
+    )
+
+    if resp.status_code >= 400:
+        body = resp.text
+        raise RuntimeError(
+            f"Backend error: HTTP {resp.status_code}\n\n"
+            f"URL: {resp.url}\n\n"
+            f"Body: {body}"
+        )
+
+    data = resp.json()
+    answer = data.get("answer", "").strip()
+    citations = data.get("citations", [])
+
+    if not answer:
+        answer = "No answer returned from backend."
+
+    return answer, citations
+
+
+def main() -> None:
+    render_sidebar()
+    render_header()
+    render_history()
+
+    if prompt := st.chat_input("Ask a question about MANGOS technical manuals..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            citations_captured: list = []
+            full_answer: str = ""
+
+            try:
+                with st.spinner("Getting answer..."):
+                    full_answer, citations_captured = call_backend_json(
+                        prompt,
+                        st.session_state.session_id,
+                    )
+
+                st.markdown(full_answer)
+
+                if citations_captured:
+                    st.markdown("---")
+                    render_citations(citations_captured)
+
+            except requests.exceptions.ConnectionError:
+                full_answer = f"Cannot connect to backend at `{BACKEND_URL}`. Is it running?"
+                st.error(full_answer)
+
+            except requests.exceptions.Timeout:
+                full_answer = "Request timed out. Please try again."
+                st.error(full_answer)
+
+            except Exception as e:
+                full_answer = str(e)
+                st.error(full_answer)
+
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": full_answer,
+                "citations": citations_captured,
+            })
+
+    st.markdown(
+        '<div style="text-align:center; padding: 1rem 0; margin-top:1.5rem; '
+        'color:#718096; font-size:0.78rem;">'
+        'MANGOS Tech Manual Agent · Powered by Azure AI · commercial Azure'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+if __name__ == "__main__":
+    main()
