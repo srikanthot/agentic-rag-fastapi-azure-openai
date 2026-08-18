@@ -74,7 +74,7 @@ Agentic systems need **trajectory** evals, not just final-answer scoring:
 | Context recall | right chunks retrieved before the gate |
 | Tool-call correctness | retrieval invoked with the right query |
 
-> Reproduce with the shared harness in `mangos-rag-eval`.
+> Reproduce with the shared harness in [rag-evaluation-harness-python](https://github.com/srikanthot/rag-evaluation-harness-python).
 
 ## Production considerations & roadmap
 
